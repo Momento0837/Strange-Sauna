@@ -1,4 +1,6 @@
-# 수상한 찜질방
+# 수상한 찜질방 (Strange-Sauna)
+
+사우나에서 진상을 상대해보세요.
 
 Unity **6.3 LTS / 6000.3.26f1**, **URP 17.3.0의 2D Renderer**로 만든 Windows용 2D 프로토타입입니다.
 
