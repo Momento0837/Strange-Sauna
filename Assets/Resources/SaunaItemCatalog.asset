@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 519a07c7767ee1640b740ee7de9bf25a, type: 3}
+  m_Name: SaunaItemCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::SuspiciousSauna.SaunaItemCatalog
+  cookingMenu:
+  - {fileID: 11400000, guid: 76d3cea0d3e50484fbe825bf8008d74d, type: 2}
+  - {fileID: 11400000, guid: c31666d4c78d96841aea8e65e98973ff, type: 2}
+  - {fileID: 11400000, guid: 514cce06cca5bfc4eafa57b688753bc6, type: 2}
+  - {fileID: 11400000, guid: 22be1be1fbcf8ff4db7bee7365f8a56f, type: 2}
+  - {fileID: 11400000, guid: c2a58393139991e4e820f4b09d23e257, type: 2}
+  - {fileID: 11400000, guid: 341d3907f1f8ff046a08813eb05e0014, type: 2}
+  - {fileID: 11400000, guid: a7821f443aae5704086aba790ef70754, type: 2}
+  - {fileID: 11400000, guid: fce4ee15ea6265545b59dc049c7d1791, type: 2}
+  - {fileID: 11400000, guid: b32ad726293d2c740a1727229eac2af1, type: 2}
+  retailMenu:
+  - {fileID: 11400000, guid: 2d5e29cbf486bd04284cace950b31fca, type: 2}
+  - {fileID: 11400000, guid: d73139516aa1f134bbc5554c118a5fcb, type: 2}
+  - {fileID: 11400000, guid: 27950537121a0b746a5b68e57a355674, type: 2}
+  - {fileID: 11400000, guid: 7681c9621e26ac743a05958102792f3f, type: 2}
+  - {fileID: 11400000, guid: 5b9097b5bd6e22f4695e3a4382cdb56a, type: 2}
+  - {fileID: 11400000, guid: a31c12e73f5da6543b72b3e52cdf0502, type: 2}
+  - {fileID: 11400000, guid: 28cf497cf23ca7b488fdb9f80adbbfc3, type: 2}
+  - {fileID: 11400000, guid: 39ad380468b111045be82807a18fbec8, type: 2}
+  - {fileID: 11400000, guid: ee216927094d7b2419c76f5aea78484a, type: 2}

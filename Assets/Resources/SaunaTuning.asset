@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 93a25a7065582bb4f9b486538b5721ba, type: 3}
+  m_Name: SaunaTuning
+  m_EditorClassIdentifier: Assembly-CSharp::SuspiciousSauna.SaunaTuning
+  playerSpeed: 8.4
+  guestSpeed: 3.1
+  arrivalInterval: 18
+  orderPatienceSeconds: 100
+  maxOccupiedTables: 7
+  initialRating: 5
+  failurePercent: 0.05
+  successPercent: 0.03
+  cleaningHoldSeconds: 3
+  cleaningPresses: 10
+  retailArrivalInterval: 28
+  retailQueueCapacity: 3
+  retailTimeMultiplier: 0.5
+  retailOverflowPenaltyMultiplier: 0.5
+  retailItemPenaltyMultiplier: 0.3
