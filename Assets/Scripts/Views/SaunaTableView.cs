@@ -13,6 +13,14 @@ namespace SuspiciousSauna
         [Header("우측 상단 번호판")]
         public SpriteRenderer numberBadge;
         public Text numberLabel;
+        public void ApplyDepthOrder()
+        {
+            // Use the front of the solid footprint as the point that a character can walk past.
+            float frontY = TryGetComponent<SaunaObstacle>(out var obstacle) ? obstacle.WorldRect().yMin : transform.position.y;
+            int order = SaunaWorldView.DepthOrder(frontY);
+            tableSprite.sortingOrder = order;
+            if (dirt != null && dirt.TryGetComponent<SpriteRenderer>(out var stain)) stain.sortingOrder = order + 1;
+        }
         public void RefreshNumber()
         {
             if (numberLabel == null) return;

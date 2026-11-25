@@ -165,7 +165,7 @@ namespace SuspiciousSauna
             table.service = TableServiceState.Arriving; table.quest = null; table.failed = false;
             table.patience = table.totalPatience = tuning.orderPatienceSeconds;
             int count = forcedSize > 0 ? Mathf.Clamp(forcedSize, 1, 4) : UnityEngine.Random.Range(1, 5);
-            table.partySize = count; table.foodOrder = new TableFoodOrder();
+            table.partySize = count; table.itemOrder = new TableItemOrder();
             int[] seats = { 0, 1, 2, 3 };
             for (int i = 3; i > 0; i--) { int j = UnityEngine.Random.Range(0, i + 1); int temp = seats[i]; seats[i] = seats[j]; seats[j] = temp; }
             for (int i = 0; i < count; i++)
@@ -212,10 +212,7 @@ namespace SuspiciousSauna
                 if (table.service == TableServiceState.Arriving)
                 {
                     if (Guests.Where(g => g.table == table.index).All(g => g.state == GuestState.Seated))
-                    {
                         table.service = TableServiceState.Waiting;
-                        for (int n = 0; n < table.partySize; n++) table.foodOrder.Add(items.RandomFood());
-                    }
                     continue;
                 }
                 if (table.service == TableServiceState.Departing && !Guests.Any(g => g.table == table.index)) table.service = TableServiceState.Empty;
@@ -281,7 +278,7 @@ namespace SuspiciousSauna
             if (TargetOrderTable != null)
             {
                 if (TargetOrderTable.service == TableServiceState.Waiting) Accept(TargetOrderTable);
-                else if (TargetOrderTable.IsFoodOrder) DeliverFood(TargetOrderTable);
+                else if (TargetOrderTable.RequiresItems) DeliverTableItems(TargetOrderTable);
                 else Resolve(TargetOrderTable, true);
             }
             else if (TargetTable != null) { Say("카운터 오른쪽에서 청소 도구를 가져오세요."); Sound.Play(2); }
@@ -290,7 +287,7 @@ namespace SuspiciousSauna
                 if (TargetStation == 3)
                 {
                     if (ActiveRetailOrder != null) { RejectPickup("카운터에 기다리는 손님이 있어요!"); return; }
-                    if (!HasCleaningTool && Model.inventory.Count > 0) { RejectPickup("손에 든 물건을 먼저 내려놓아 주세요."); return; }
+                    if (!HasCleaningTool && (Model.inventory.Count > 0 || CarryingTableGoods)) { RejectPickup("들고 있는 물건을 먼저 내려놓아 주세요."); return; }
                     HasCleaningTool = !HasCleaningTool; Say(HasCleaningTool ? "청소 도구를 들었어요. 더러운 테이블에서 F!" : "청소 도구를 제자리에 두었어요.");
                 }
                 else if (TargetStation == 0) { OpenCooking(); return; }
@@ -304,7 +301,18 @@ namespace SuspiciousSauna
             if (table.service != TableServiceState.Waiting) return;
             table.quest = quests.Draw(Rating); table.service = TableServiceState.Ordered;
             table.patience = table.totalPatience = Mathf.Max(5, table.quest.deliverySeconds);
-            Sound.Play(); Say(table.IsFoodOrder ? "음식 주문을 받았어요. 조리대에서 준비해 주세요." : "주문 " + table.quest.id + " · F를 한 번 더 누르면 테이블 응대 완료");
+            if (table.IsTableRetailOrder)
+            {
+                table.itemOrder = TableItemOrder.CreateRetail(items);
+                Say("테이블 잡화 주문이에요. 진열대에서 가져와 주세요.");
+            }
+            else if (table.RequiresItems)
+            {
+                for (int n = 0; n < table.partySize; n++) table.itemOrder.Add(items.RandomFood());
+                Say("음식 주문을 받았어요. 조리대에서 준비해 주세요.");
+            }
+            else Say("주문 " + table.quest.id + " · F를 한 번 더 누르면 테이블 응대 완료");
+            Sound.Play();
             OrderAccepted?.Invoke(table, table.quest);
         }
         public void Resolve(SaunaTable table, bool success)
@@ -320,10 +328,26 @@ namespace SuspiciousSauna
                 guest.path = Navigation.Path(guest.position, Map.entrance, guest.id + 197);
             }
             table.dirty = true;
-            Rating = Mathf.Clamp(Rating + 5 * (success ? tuning.successPercent : -tuning.failurePercent), 1, 5);
-            if (success) { Completed++; Sound.Play(1); Say("테이블 응대 완료! +3% · 일행이 나가면 테이블을 청소하세요."); }
-            else { Failed++; Sound.Play(2); Say("기다리던 일행이 돌아갔어요. 별점 −5%"); }
+            if (success)
+            {
+                Completed++; Sound.Play(1);
+                if (table.itemOrder.DeliveryMistakes == 0)
+                {
+                    Rating = Mathf.Min(5, Rating + 5 * tuning.successPercent);
+                    Say(table.IsTableRetailOrder && !table.itemOrder.IsAdditionalRequest
+                        ? "추가 주문까지 맞혔어요! 테이블 응대 완료! +3%"
+                        : "테이블 응대 완료! +3% · 일행이 나가면 테이블을 청소하세요.");
+                }
+                else Say("테이블 잡화 전달 완료! · 일행이 나가면 테이블을 청소하세요.");
+            }
+            else
+            {
+                Rating = Mathf.Max(1, Rating - 5 * tuning.failurePercent);
+                Failed++; Sound.Play(2); Say("기다리던 일행이 돌아갔어요. 별점 −5%");
+            }
             OrderResolved?.Invoke(table, success);
+            if (table.IsTableRetailOrder && State == ScreenState.RetailPicking && !HasShelfOrder && !CarryingTableGoods)
+                CloseRetailPicking();
             if (Rating <= 1.0001f) SetState(ScreenState.GameOver);
         }
         public void FinishCleaning(SaunaTable table)

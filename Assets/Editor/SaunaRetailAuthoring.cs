@@ -107,7 +107,7 @@ public static partial class SaunaSceneAuthoring
         var root = Object.Instantiate(source.gameObject); root.name = "RetailCustomer";
         var view = root.AddComponent<SaunaRetailCustomerView>(); view.character = root.GetComponent<SaunaCharacterView>();
         var canvasRoot = new GameObject("SpeechCanvas", typeof(RectTransform), typeof(Canvas)); canvasRoot.transform.SetParent(root.transform, false);
-        canvasRoot.transform.localPosition = new Vector3(0, 2, 0); canvasRoot.transform.localScale = Vector3.one * .018f;
+        canvasRoot.transform.localPosition = new Vector3(0, 2, 0); canvasRoot.transform.localScale = Vector3.one * .022f;
         var canvas = canvasRoot.GetComponent<Canvas>(); canvas.renderMode = RenderMode.WorldSpace; canvas.sortingOrder = 700;
         ((RectTransform)canvasRoot.transform).sizeDelta = new Vector2(280, 68);
         var bubble = Image("SpeechBubble", canvasRoot.transform, Color.white, SaunaRetailArt.Make("speech_panel", 13)); bubble.type = UnityEngine.UI.Image.Type.Sliced;

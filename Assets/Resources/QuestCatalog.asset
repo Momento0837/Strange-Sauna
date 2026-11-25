@@ -115,10 +115,10 @@ MonoBehaviour:
     deliverySeconds: 100
   letters:
   - id: a
-    title: "\uC218\uC0C1\uD55C \uBD80\uD0C1"
-    description: "\uC5EC\uAE30\uC5D0 \uD018\uC2A4\uD2B8 \uB0B4\uC6A9\uC744 \uC785\uB825\uD558\uC138\uC694.\n\uC9C0\uAE08\uC740
-      F\uB97C \uB2E4\uC2DC \uB204\uB974\uBA74 \uC644\uB8CC\uB429\uB2C8\uB2E4."
+    title: "테이블 잡화 주문"
+    description: "진열대에서 주문한 잡화를 가져와 이 테이블에 전달하세요."
     deliverySeconds: 100
+    kind: 3
   - id: b
     title: "\uC218\uC0C1\uD55C \uBD80\uD0C1"
     description: "\uC5EC\uAE30\uC5D0 \uD018\uC2A4\uD2B8 \uB0B4\uC6A9\uC744 \uC785\uB825\uD558\uC138\uC694.\n\uC9C0\uAE08\uC740

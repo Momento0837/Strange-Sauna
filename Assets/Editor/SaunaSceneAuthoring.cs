@@ -145,7 +145,7 @@ public static partial class SaunaSceneAuthoring
         var audio = controller.GetComponent<SaunaAudio>() ?? controller.gameObject.AddComponent<SaunaAudio>();
         audio.music = Node("Music",controller.transform).AddComponent<AudioSource>(); audio.music.playOnAwake=false;
         audio.effects = Node("Effects",controller.transform).AddComponent<AudioSource>(); audio.effects.playOnAwake=false;
-        var ui = CreateUI();
+        var ui = CreateUI(view.playCamera);
         var so = new SerializedObject(controller);
         so.FindProperty("worldView").objectReferenceValue = view;
         so.FindProperty("userInterface").objectReferenceValue = ui;
@@ -198,12 +198,15 @@ public static partial class SaunaSceneAuthoring
         var veil = Panel(name,parent,new Color(.03f,.08f,.07f,.82f)); veil.GetComponent<Image>().raycastTarget = true;
         card = Panel("Card",veil,Ink); Box(card,480,255,480,390); return veil.gameObject;
     }
-    static SaunaUI CreateUI()
+    static SaunaUI CreateUI(Camera playCamera)
     {
         var root = new GameObject("UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         var canvas = root.GetComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay; canvas.sortingOrder = 10;
         var ui = root.AddComponent<SaunaUI>(); ui.canvas = canvas;
-        var scaler = root.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+        var scaler = root.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(800, 800);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
         var eventSystem = Node("EventSystem"); eventSystem.AddComponent<EventSystem>(); eventSystem.AddComponent<StandaloneInputModule>();
         var hud = Rect("HUD",root.transform); Stretch(hud); ui.hud = hud.gameObject;
         ui.playFrame = Rect("SquarePlayBorder",hud); Box(ui.playFrame,313,43,814,814);
@@ -212,7 +215,7 @@ public static partial class SaunaSceneAuthoring
         line = Image("Left",ui.playFrame,Gold); line.rectTransform.anchorMin = Vector2.zero; line.rectTransform.anchorMax = new Vector2(0,1); line.rectTransform.sizeDelta = new Vector2(2,0);
         line = Image("Right",ui.playFrame,Gold); line.rectTransform.anchorMin = new Vector2(1,0); line.rectTransform.anchorMax = Vector2.one; line.rectTransform.sizeDelta = new Vector2(2,0);
         ui.leftRail = Rect("Orders",hud); Box(ui.leftRail,12,32,289,815);
-        ui.receiptHeading = Label("Heading",ui.leftRail,"받은 주문  00",14,Cream); Box(ui.receiptHeading.rectTransform,0,0,280,26);
+        ui.receiptHeading = Label("Heading",ui.leftRail,"받은 주문  00",17,Cream); Box(ui.receiptHeading.rectTransform,0,0,280,26);
         ui.receiptsScroll = Scroll("ReceiptList",ui.leftRail); Stretch((RectTransform)ui.receiptsScroll.transform,0,35,0,0);
         ui.emptyOrders = Label("Empty",ui.receiptsScroll.viewport,"아직 받은 주문이 없어요.",15,Cream); Box(ui.emptyOrders.rectTransform,5,20,240,60);
         ui.rightRail = Rect("Status",hud); Box(ui.rightRail,1145,60,275,780);
@@ -237,7 +240,7 @@ public static partial class SaunaSceneAuthoring
         }
         ui.ratingText=Label("Value",ui.starRow,"5.00",18,Cream); Box(ui.ratingText.rectTransform,170,6,65,28);
         ui.footer=Rect("Footer",hud); Box(ui.footer,319,859,802,37);
-        ui.footerText=Label("Message",ui.footer,"WASD / 방향키  이동     F  상호작용     ESC  일시정지",14,Cream,true); Stretch(ui.footerText.rectTransform);
+        ui.footerText=Label("Message",ui.footer,"WASD / 방향키  이동     F  상호작용     ESC  일시정지",17,Cream,true); Stretch(ui.footerText.rectTransform);
         ui.overlay=Rect("WorldIndicators",hud); Stretch(ui.overlay);
         var bubble=Rect("CustomerBubble",null); var bv=bubble.gameObject.AddComponent<SaunaBubbleView>(); bv.rect=bubble;
         bv.background=bubble.gameObject.AddComponent<Image>(); bv.background.color=Cream; bv.background.raycastTarget=false; Box(bubble,0,0,34,34);
@@ -246,10 +249,21 @@ public static partial class SaunaSceneAuthoring
         var bubblePrefab=SavePrefab(bubble.gameObject,"CustomerBubble");
         ui.bubbles=new SaunaBubbleView[SaunaMap.TableCount];
         for(int i=0;i<ui.bubbles.Length;i++) { var item=Instance(bubblePrefab,ui.overlay,"Bubble_Table_"+(i+1).ToString("00"),Vector2.zero); ui.bubbles[i]=item.GetComponent<SaunaBubbleView>(); item.SetActive(false); }
-        var hint=Image("InteractionHint",ui.overlay,Ink); ui.interactionHint=hint.rectTransform; Box(hint.rectTransform,600,600,240,36);
-        ui.interactionText=Label("Text",hint.transform,"F  상호작용",16,Cream,true); Stretch(ui.interactionText.rectTransform,4,2,4,5);
-        ui.cleaningProgress=Image("CleaningProgress",hint.transform,Gold); ui.cleaningProgress.type=UnityEngine.UI.Image.Type.Filled; ui.cleaningProgress.fillMethod=UnityEngine.UI.Image.FillMethod.Horizontal; ui.cleaningProgress.fillAmount=0;
-        ui.cleaningProgress.rectTransform.anchorMin=Vector2.zero; ui.cleaningProgress.rectTransform.anchorMax=new Vector2(1,0); ui.cleaningProgress.rectTransform.sizeDelta=new Vector2(0,3); hint.gameObject.SetActive(false);
+        var hint=Image("InteractionHint",playCamera.transform,Ink); ui.interactionHint=hint.rectTransform;
+        hint.rectTransform.sizeDelta = new Vector2(240, 38);
+        var hintCanvas = hint.gameObject.AddComponent<Canvas>();
+        hintCanvas.renderMode = RenderMode.WorldSpace; hintCanvas.worldCamera = playCamera; hintCanvas.sortingOrder = 200;
+        hint.rectTransform.localPosition = new Vector3(0, -1, 10);
+        hint.rectTransform.localScale = Vector3.one * .024f;
+        ui.interactionText=Label("Text",hint.transform,"F  상호작용",20,Cream,true); Stretch(ui.interactionText.rectTransform,4,2,4,5);
+        ui.cleaningTrack = Image("CleaningTrack", hint.transform, Ink).rectTransform;
+        ui.cleaningTrack.anchorMin = Vector2.zero; ui.cleaningTrack.anchorMax = Vector2.right;
+        ui.cleaningTrack.pivot = new Vector2(.5f, 1); ui.cleaningTrack.anchoredPosition = new Vector2(0, -3);
+        ui.cleaningTrack.sizeDelta = new Vector2(0, 14);
+        ui.cleaningProgress = Image("CleaningProgress", ui.cleaningTrack, Gold);
+        Stretch(ui.cleaningProgress.rectTransform, 0, 2, 0, 2);
+        ui.cleaningProgress.rectTransform.anchorMax = Vector2.up;
+        ui.cleaningTrack.gameObject.SetActive(false); hint.gameObject.SetActive(false);
         ui.receiptPrefab=CreateReceipt();
         ui.receiptPreview=Instance(ui.receiptPrefab.gameObject,ui.receiptsScroll.content,"ReceiptPreview_EditMode",Vector2.zero);
         ui.receiptPreview.tag="EditorOnly"; ui.receiptPreview.SetActive(false);

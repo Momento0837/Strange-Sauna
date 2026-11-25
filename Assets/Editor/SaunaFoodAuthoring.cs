@@ -104,7 +104,7 @@ public static partial class SaunaSceneAuthoring
             Stretch(v.status.rectTransform, 12, 192, 78, 12); v.status.alignment = TextAnchor.MiddleLeft; v.status.fontSize = 13;
             AddTimer(v.normal.transform, v.patience, false, out var timer, out var label); v.patience = timer; v.timerText = label;
             AddTimer(v.compact.transform, null, true, out timer, out label); v.compactPatience = timer; v.compactTimerText = label;
-            Stretch(v.compactLabel.rectTransform, 8, 2, 45, 2); v.compactLabel.fontSize = 12; v.compactLabel.alignment = TextAnchor.MiddleLeft;
+            Stretch(v.compactLabel.rectTransform, 8, 2, 45, 2); v.compactLabel.fontSize = 15; v.compactLabel.alignment = TextAnchor.MiddleLeft;
             LayoutCompactReceipt(v);
             PrefabUtility.SaveAsPrefabAsset(root, path);
         }
@@ -119,7 +119,7 @@ public static partial class SaunaSceneAuthoring
         fill = existing != null ? existing : Image("Remaining", area, SaunaArt.C("4D9161"), ring);
         fill.transform.SetParent(area, false); fill.sprite = ring; Stretch(fill.rectTransform);
         fill.type = UnityEngine.UI.Image.Type.Filled; fill.fillMethod = UnityEngine.UI.Image.FillMethod.Radial360; fill.fillOrigin = 2; fill.fillClockwise = true;
-        value = Label("Seconds", area, "100", compact ? 10 : 14, Ink, true); Stretch(value.rectTransform, 3, 3, 3, 3);
+        value = Label("Seconds", area, "100", compact ? 12 : 14, Ink, true); Stretch(value.rectTransform, 3, 3, 3, 3);
     }
     static SaunaCookingView CookingUI(Transform parent, SaunaItemCatalog catalog)
     {

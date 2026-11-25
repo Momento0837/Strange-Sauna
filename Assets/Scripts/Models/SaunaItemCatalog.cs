@@ -7,6 +7,7 @@ namespace SuspiciousSauna
     {
         public SaunaItemDefinition[] cookingMenu;
         public SaunaItemDefinition[] retailMenu;
+        public SaunaItemDefinition RandomRetail() => retailMenu[Random.Range(0, retailMenu.Length)];
         public SaunaItemDefinition RandomFood()
         {
             var choices = cookingMenu.Where(i => i != null && i.category == ItemCategory.Food).ToArray();

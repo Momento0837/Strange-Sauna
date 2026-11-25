@@ -26,7 +26,7 @@ namespace SuspiciousSauna
             if (visual != null && grumbling) visual.localPosition += Vector3.right * (Mathf.Sin(time * 11) * .035f);
             if (sweatEffect != null) sweatEffect.SetActive(reaction > 0);
             if (body != null) body.flipX = faceLeft;
-            if (sorting != null) sorting.sortingOrder = 500 - Mathf.RoundToInt(position.y * 10);
+            if (sorting != null) sorting.sortingOrder = SaunaWorldView.DepthOrder(position.y);
             if (animator != null && !string.IsNullOrEmpty(walkingParameter))
                 foreach (var p in animator.parameters) if (p.name == walkingParameter && p.type == AnimatorControllerParameterType.Bool) { animator.SetBool(walkingParameter, walking); break; }
         }

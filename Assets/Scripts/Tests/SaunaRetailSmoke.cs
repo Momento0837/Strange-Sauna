@@ -56,6 +56,14 @@ namespace SuspiciousSauna
             Check(order.receiptItems.SequenceEqual(sampled), "receipt sample remains stable across redraws");
             Check(ModelOrderCount() == 1 && second.order == null && third.order == null, "only queue front has an accepted retail order");
             yield return new WaitForSecondsRealtime(.6f); yield return Capture("02-icons-and-limited-receipt.png");
+            var hint = game.Interface.interactionHint;
+            var hintCanvas = hint.GetComponentInParent<Canvas>();
+            var customerView = game.WorldView.retailGuestContainer.GetComponentsInChildren<SaunaRetailCustomerView>().Single(v => v.orderContents.activeSelf);
+            var speechCanvas = customerView.bubble.GetComponentInParent<Canvas>();
+            Check(hint.gameObject.activeInHierarchy && hintCanvas.renderMode == RenderMode.WorldSpace && hintCanvas.worldCamera == game.WorldCamera
+                && speechCanvas.renderMode == RenderMode.WorldSpace && hintCanvas.sortingLayerID == speechCanvas.sortingLayerID && hintCanvas.sortingOrder < speechCanvas.sortingOrder,
+                "register hint renders behind the visible order speech bubble");
+            Check(Mathf.Approximately(game.Interface.canvas.scaleFactor, Mathf.Min(Screen.width, Screen.height) / 800f), "HUD scales with the shorter screen dimension");
             game.DebugPosition(game.Map.stations[0] + Vector2.down * 2); Interact();
             Check(game.State == ScreenState.Playing && game.Toast == "카운터에 기다리는 손님이 있어요!", "active retail order blocks cooking interaction");
             game.DebugPosition(game.Map.stations[3] + Vector2.down * 1.5f); Interact();
@@ -111,9 +119,191 @@ namespace SuspiciousSauna
             Check(game.Interface.Receipts.Count == 2 && game.Interface.Receipts.Count(r => r.retailOrder != null) == 1 && game.Interface.Receipts.Count(r => r.table != null) == 1, "food and retail receipts coexist in one animated stack");
             game.MainMenu(); game.SetUiScale(3); game.StartGame(); game.SpawnRetailCustomer(); game.DebugTickRetail(30); AtRegister(); Interact(); AtShelf(); Interact();
             yield return null; yield return Capture("08-retail-picker-300.png");
+            yield return VerifySeatedRetailOrder();
             game.MainMenu(); game.SetUiScale(previousScale);
             File.WriteAllLines(Path.Combine(output, "runtime-checks.txt"), checks);
             Debug.Log("SAUNA_RETAIL_" + (failed ? "FAILED" : "OK") + " " + checks.Count + " checks"); Application.Quit(failed ? 1 : 0);
+        }
+        IEnumerator VerifySeatedRetailOrder()
+        {
+            game.MainMenu(); game.SetUiScale(1); game.StartGame(); game.DebugRating(4);
+            var numbers = game.quests.numbers;
+            var letters = game.quests.letters;
+            var entry = letters.Single(q => q.id == "a");
+            game.quests.numbers = game.quests.letters = new[] { entry };
+            var menu = game.items.retailMenu;
+            var table = game.Tables[5];
+            void AtTable() => game.DebugPosition(game.Map.tables[table.index] + Vector2.down * 2);
+            void Seat(int partySize) { game.SpawnParty(table.index, partySize); game.DebugTickGuests(50); AtTable(); Interact(); }
+            SaunaItemDefinition[] Requested() => table.itemOrder.lines.SelectMany(l => Enumerable.Repeat(l.item, l.Remaining)).ToArray();
+
+            var splits = new HashSet<string>();
+            bool allGuessesMatched = true, checkedHiddenOnly = false;
+            var randomState = UnityEngine.Random.state;
+            UnityEngine.Random.InitState(941);
+            for (int i = 0; i < 64; i++)
+            {
+                var planState = UnityEngine.Random.state;
+                var sample = TableItemOrder.CreateRetail(game.items);
+                var announced = sample.lines.SelectMany(l => Enumerable.Repeat(l.item, l.quantity)).ToList();
+                foreach (var line in sample.lines) line.delivered = line.quantity;
+                if (!sample.RevealNextRequest()) { allGuessesMatched = false; continue; }
+                splits.Add(announced.Count + "+" + sample.Quantity);
+                var hidden = sample.lines.SelectMany(l => Enumerable.Repeat(l.item, l.quantity)).ToList();
+                UnityEngine.Random.state = planState;
+                var replay = TableItemOrder.CreateRetail(game.items);
+                var bag = new HandInventory(5);
+                var unannounced = hidden.FirstOrDefault(item => !announced.Contains(item));
+                if (!checkedHiddenOnly && unannounced != null)
+                {
+                    bag.TryAdd(unannounced);
+                    var early = replay.DeliverRetail(bag);
+                    Check(early.matched == 1 && early.Incorrect == 0 && replay.Remaining == announced.Count && !replay.RevealNextRequest(),
+                        "a hidden-only guess is credited while the outstanding first request stays on the receipt");
+                    hidden.Remove(unannounced); checkedHiddenOnly = true;
+                }
+                foreach (var item in hidden.Concat(announced)) bag.TryAdd(item);
+                var result = replay.DeliverRetail(bag);
+                allGuessesMatched &= result.Success && replay.Complete && !replay.RevealNextRequest() && bag.Count == 0;
+            }
+            UnityEngine.Random.state = randomState;
+            Check(splits.SetEquals(new[] { "2+2", "2+3", "3+2" }), "catalog plans only 4 or 5 units in two batches of 2 or 3, with all three splits represented");
+            Check(allGuessesMatched && checkedHiddenOnly, "exact guesses complete every 4- and 5-unit split without a follow-up prompt");
+
+            var beforeSeating = UnityEngine.Random.state;
+            Seat(3);
+            var first = Requested();
+            Check(table.IsTableRetailOrder && table.quest == entry && first.Length >= 2 && first.Length <= 3 &&
+                first.All(menu.Contains) && !table.itemOrder.IsAdditionalRequest, "seated a party reveals only its first merchandise request");
+            yield return new WaitForSecondsRealtime(.7f);
+            var ticket = game.Interface.Receipts.Single(r => r.table == table).view;
+            Check(ticket.code.text == "#a" && ticket.title.text == "잡화 주문" && ticket.description.text.Split('\n').Length == table.itemOrder.lines.Count
+                && first.All(item => ticket.description.text.Contains(item.displayName)), "first receipt lists exactly the disclosed lines");
+            yield return Capture("09-seated-a-order.png");
+            Interact();
+            Check(table.service == TableServiceState.Ordered && game.Completed == 0 && Requested().Length == first.Length, "empty interaction leaves first request pending");
+
+            game.SpawnRetailCustomer(); game.DebugTickRetail(30); AtRegister(); Interact();
+            var register = game.ActiveRetailOrder;
+            AtShelf(); Interact(); Pick(first[0]); game.CloseRetailPicking(); AtTable(); Interact();
+            Check(game.Model.retailBag.Count == 1 && Requested().Length == first.Length, "POS bag cannot be submitted at a table");
+            AtShelf(); Interact(); game.RemoveRetailItem(0);
+            foreach (var item in register.requested) Pick(item);
+            game.CloseRetailPicking(); AtRegister(); Interact();
+            Check(register.success && table.service == TableServiceState.Ordered && game.Model.retailBag.Count == 0, "register completion preserves the table ticket");
+
+            AtShelf(); Interact();
+            int spareSlots = 5 - first.Length;
+            for (int i = 0; i < spareSlots; i++) Pick(menu[i]);
+            foreach (var item in first) Pick(item);
+            yield return null;
+            var picker = game.Interface.retailPicker;
+            Check(game.Model.retailBag.Full && game.Model.retailBag.Count == 5 && game.Model.inventory.Count == 0 &&
+                picker.bagButtons.Count(button => button.gameObject.activeSelf) == 5 && picker.capacity.text.Contains("테이블 잡화 5 / 5") &&
+                !game.PickRetailItem(menu[0]), "table merchandise uses all five bag slots and rejects a sixth unit");
+            yield return Capture("10-five-slot-table-bag.png");
+            for (int slot = 0; slot < spareSlots; slot++) game.RemoveRetailItem(slot);
+            game.CloseRetailPicking();
+            game.SpawnRetailCustomer(); game.DebugTickRetail(30); AtRegister(); Interact();
+            Check(game.ActiveRetailOrder == null && game.Model.retailBag.Count == first.Length, "register cannot claim stock already carried for a table");
+
+            AtTable(); float deadline = table.patience, rating = game.Rating;
+            game.items.retailMenu = new[] { game.items.cookingMenu[0] };
+            Interact();
+            game.items.retailMenu = menu;
+            var second = Requested();
+            Check(table.itemOrder.IsAdditionalRequest && second.All(menu.Contains) && second.Length >= 2 && second.Length <= 3 &&
+                first.Length + second.Length >= 4 && first.Length + second.Length <= 5, "follow-up is drawn from the original menu before the first trip");
+            Check(game.Model.retailBag.Count == 0 && table.service == TableServiceState.Ordered && !table.dirty &&
+                game.Completed == 1 && game.Rating == rating && table.patience == deadline, "first batch in the last bag slots reveals the next request on the same timer without resolving the table");
+            yield return new WaitForSecondsRealtime(.6f);
+            Check(ticket.title.text == "추가 잡화 주문" && second.All(item => ticket.description.text.Contains(item.displayName)),
+                "same table receipt now shows the second batch");
+            yield return Capture("11-additional-order.png");
+            Interact();
+            Check(Requested().Length == second.Length, "pressing F again without a second shelf trip delivers nothing");
+            AtShelf(); Interact(); foreach (var item in second) Pick(item);
+            game.CloseRetailPicking(); AtTable(); Interact(); Interact();
+            Check(table.itemOrder.Complete && table.dirty && table.service == TableServiceState.Departing && game.Completed == 2 &&
+                Mathf.Abs(game.Rating - (rating + .15f)) < .001f && game.Model.retailBag.Count == 0 &&
+                game.Guests.All(g => g.state == GuestState.Leaving), "second trip completes the table and grants exactly one perfect-order reward");
+
+            // Replay that same order, this time packing the unannounced items on the first trip.
+            game.StartGame(); game.DebugRating(4); UnityEngine.Random.state = beforeSeating; Seat(3);
+            Check(first.SequenceEqual(Requested()) && !table.itemOrder.IsAdditionalRequest, "replayed first receipt still contains only the announced items");
+            AtShelf(); Interact();
+            foreach (var item in second.Concat(first)) Pick(item);
+            game.CloseRetailPicking(); AtTable();
+            yield return new WaitForSecondsRealtime(.55f); yield return Capture("13-first-trip-bag.png");
+            Interact();
+            Check(table.itemOrder.Complete && !table.itemOrder.IsAdditionalRequest && table.itemOrder.DeliveryMistakes == 0 &&
+                game.Model.retailBag.Count == 0 && game.Completed == 1 && table.service == TableServiceState.Departing &&
+                Mathf.Abs(game.Rating - 4.15f) < .001f, "guessing the complete hidden batch resolves the table and gives the perfect reward on the first trip");
+            yield return new WaitForSecondsRealtime(.45f); yield return Capture("14-first-trip-complete.png");
+            Interact();
+            Check(game.Completed == 1 && Mathf.Abs(game.Rating - 4.15f) < .001f, "one-trip completion cannot pay twice");
+
+            game.StartGame(); game.DebugRating(4);
+            var product = menu[0]; var wrong = menu[1];
+            game.items.retailMenu = new[] { product }; Seat(1); game.items.retailMenu = menu;
+            int firstUnits = table.itemOrder.Quantity;
+            AtShelf(); Interact(); Pick(product); game.CloseRetailPicking(); AtTable(); Interact();
+            Check(!table.itemOrder.IsAdditionalRequest && table.itemOrder.Remaining == firstUnits - 1 && game.Rating == 4, "partial correct delivery neither reveals the next request nor penalizes missing units");
+            AtShelf(); Interact(); for (int i = 0; i < firstUnits; i++) Pick(product);
+            game.CloseRetailPicking(); AtTable(); Interact();
+            int followUpLeft = table.itemOrder.Quantity - 1;
+            Check(table.itemOrder.IsAdditionalRequest && table.itemOrder.Remaining == followUpLeft && game.Model.retailBag.Count == 0 &&
+                table.itemOrder.DeliveryMistakes == 0 && game.Rating == 4, "duplicate units fill the announced batch first and credit one matching hidden unit without a penalty");
+            yield return new WaitForSecondsRealtime(.45f); yield return Capture("15-partially-guessed-order.png");
+            AtShelf(); Interact(); Pick(wrong); Pick(wrong); game.CloseRetailPicking(); AtTable(); Interact();
+            float afterWrong = 4 - .15f;
+            Check(table.itemOrder.Remaining == followUpLeft && table.itemOrder.DeliveryMistakes == 2 &&
+                game.Model.retailBag.Count == 0 && Mathf.Abs(game.Rating - afterWrong) < .001f, "two wrong goods immediately cost two POS unit penalties");
+            yield return new WaitForSecondsRealtime(.55f); yield return Capture("12-wrong-table-delivery.png");
+            Interact();
+            Check(Mathf.Abs(game.Rating - afterWrong) < .001f, "empty retry does not repeat a delivery penalty");
+            AtShelf(); Interact(); foreach (var item in Requested()) Pick(item); Pick(product);
+            game.CloseRetailPicking(); AtTable(); Interact();
+            Check(game.Completed == 1 && table.itemOrder.Complete && table.itemOrder.DeliveryMistakes == 3 &&
+                Mathf.Abs(game.Rating - (afterWrong - .075f)) < .001f, "only the unit above the combined order is excess and the corrected order earns no perfect bonus");
+
+            game.StartGame(); Seat(4); AtShelf(); Interact(); Pick(wrong); game.CloseRetailPicking();
+            table.patience = .01f; game.DebugTickGuests(.02f); AtShelf(); Interact();
+            Check(game.Failed == 1 && table.failed && game.State == ScreenState.RetailPicking && !game.PickRetailItem(wrong), "expired table order permits returning carried stock without new pickups");
+            game.RemoveRetailItem(0); game.CloseRetailPicking(); AtShelf(); Interact();
+            Check(game.State == ScreenState.Playing && game.Model.retailBag.Count == 0, "shelf closes normally after returning a timed-out order");
+            game.StartGame(); game.items.retailMenu = new[] { product }; Seat(1); game.items.retailMenu = menu;
+            AtShelf(); Interact(); Pick(product); Pick(product); game.CloseRetailPicking();
+            var neighbor = game.Tables[0];
+            game.SpawnParty(neighbor.index, 2); game.DebugTickGuests(50);
+            game.DebugPosition(game.Map.tables[neighbor.index] + Vector2.down * 2);
+            game.items.retailMenu = new[] { product }; Interact(); game.items.retailMenu = menu;
+            Interact();
+            Check(game.Model.retailBag.Count == 0 && neighbor.itemOrder.DeliveryMistakes == 0 &&
+                (neighbor.itemOrder.IsAdditionalRequest || neighbor.itemOrder.Remaining == neighbor.itemOrder.Quantity - 2) &&
+                table.itemOrder.Remaining == table.itemOrder.Quantity && game.Rating == 5,
+                "already carried matching table stock counts at the receiving table");
+            game.StartGame(); game.items.retailMenu = new[] { product }; Seat(1); game.items.retailMenu = menu;
+            game.DebugRating(1.05f);
+            AtShelf(); Interact(); Pick(wrong); game.CloseRetailPicking(); AtTable(); Interact();
+            Check(game.State == ScreenState.GameOver && game.Rating == 1, "seated retail mistake can trigger game over at the rating floor");
+            for (int partySize = 1; partySize <= 4; partySize++)
+            {
+                game.StartGame(); Seat(partySize);
+                var sharedTicket = game.Interface.Receipts.Single();
+                int total = 0;
+                for (int trip = 0; trip < 2; trip++)
+                {
+                    var batch = Requested(); total += batch.Length;
+                    AtShelf(); Interact(); foreach (var item in batch) Pick(item);
+                    game.CloseRetailPicking(); AtTable(); Interact();
+                }
+                Check((total == 4 || total == 5) && table.partySize == partySize && sharedTicket.table == table &&
+                    game.Interface.Receipts.Single() == sharedTicket && game.Completed == 1 && game.Failed == 0 &&
+                    game.Guests.Count == partySize && game.Guests.All(g => g.state == GuestState.Leaving),
+                    partySize + " seated guests share one a quest, one receipt, 4-5 units total and one completion");
+            }
+            game.quests.numbers = numbers; game.quests.letters = letters;
         }
         int ModelOrderCount() => game.Model.retailCustomers.Count(c => c.order != null && !c.order.resolved);
         void CheckRuntimeLog(string message, string trace, LogType type)

@@ -27,8 +27,10 @@ namespace SuspiciousSauna
         public TableServiceState service;
         public QuestEntry quest;
         public int partySize;
-        public TableFoodOrder foodOrder = new TableFoodOrder();
-        public bool IsFoodOrder => quest != null && quest.IsFoodOrder;
+        public TableItemOrder itemOrder = new TableItemOrder();
+        public bool IsTableRetailOrder => quest?.kind == QuestKind.TableRetailOrder;
+        public bool RequiresItems => IsTableRetailOrder || (quest != null && quest.IsFoodOrder);
+        public string ItemLabel => IsTableRetailOrder ? "잡화" : "음식";
         public float patience, totalPatience;
         public bool failed;
 
@@ -36,7 +38,7 @@ namespace SuspiciousSauna
         public void Reset()
         {
             dirty = false; service = TableServiceState.Empty; quest = null;
-            partySize = 0; foodOrder = new TableFoodOrder();
+            partySize = 0; itemOrder = new TableItemOrder();
             patience = totalPatience = 0; failed = false; ResetCleaning();
         }
     }

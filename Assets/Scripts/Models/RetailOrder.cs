@@ -57,7 +57,8 @@ namespace SuspiciousSauna
     public struct RetailDelivery
     {
         public int matched, wrong, excess, missing;
-        public int Errors => wrong + excess + missing;
+        public int Incorrect => wrong + excess;
+        public int Errors => Incorrect + missing;
         public bool Success => Errors == 0;
     }
 }

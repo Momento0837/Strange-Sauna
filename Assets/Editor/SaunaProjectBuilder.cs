@@ -136,7 +136,7 @@ public static class SaunaProjectBuilder
         try { Check(inventory.TryAdd(futureItem) && inventory.Right == futureItem, "inventory accepts future non-food items"); }
         finally { UnityEngine.Object.DestroyImmediate(futureItem); }
         inventory.Clear(); inventory.TryAdd(catalog.cookingMenu[0]); inventory.TryAdd(catalog.cookingMenu[0]);
-        var duplicate = new TableFoodOrder(); duplicate.Add(catalog.cookingMenu[0]);
+        var duplicate = new TableItemOrder(); duplicate.Add(catalog.cookingMenu[0]);
         Check(duplicate.Deliver(inventory) == 1 && inventory.Right == null && inventory.Left != null, "delivery consumes only outstanding quantity and preserves other hand");
         Check(SaunaReceiptView.TimerColor(.51f) != SaunaReceiptView.TimerColor(.50f) && SaunaReceiptView.TimerColor(.50f) == SaunaReceiptView.TimerColor(.31f) && SaunaReceiptView.TimerColor(.30f) == SaunaReceiptView.TimerColor(.01f), "timer color thresholds 51 50 31 30 1 percent");
         var original = layout.tables[0].transform.position;

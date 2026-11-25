@@ -7,7 +7,7 @@ namespace SuspiciousSauna
 {
     // Serialized Canvas objects are the source of visual appearance. Only data and responsive
     // container geometry change at runtime; images, fonts, and button styling stay authored.
-    [ExecuteAlways]
+    [ExecuteAlways, DefaultExecutionOrder(100)]
     public sealed partial class SaunaUI : MonoBehaviour
     {
         public Canvas canvas;
@@ -28,18 +28,24 @@ namespace SuspiciousSauna
         public SaunaBubbleView[] bubbles;
         public RectTransform interactionHint;
         public Text interactionText;
+        public RectTransform cleaningTrack;
         public Image cleaningProgress;
         public SaunaCookingView cooking;
         public CanvasGroup narration;
         public Text narrationText, heldItemsText;
         public readonly List<Receipt> Receipts = new List<Receipt>();
         SaunaGame game;
+        Canvas hintCanvas;
+        int normalHintOrder;
         ScreenState previousState = (ScreenState)(-1);
         int lastScale = -1, lastWidth, lastHeight;
+        float lastCanvasScale;
         readonly List<Vector2> edgeBubbles = new List<Vector2>();
         public void Initialize(SaunaGame controller)
         {
             game = controller;
+            hintCanvas = interactionHint.GetComponent<Canvas>();
+            normalHintOrder = hintCanvas.sortingOrder;
             game.SessionStarted += ResetReceipts; game.OrderAccepted += ShowReceipt; game.OrderResolved += HideReceipt;
             startButton.onClick.AddListener(game.StartGame); settingsButton.onClick.AddListener(game.OpenSettings);
             quitButton.onClick.AddListener(game.Quit); resumeButton.onClick.AddListener(game.Resume);
@@ -88,7 +94,8 @@ namespace SuspiciousSauna
                 return;
             }
             if (game == null) return;
-            bool changed = previousState != game.State || lastScale != game.UiScale || lastWidth != Screen.width || lastHeight != Screen.height;
+            bool changed = previousState != game.State || lastScale != game.UiScale || lastWidth != Screen.width || lastHeight != Screen.height
+                || !Mathf.Approximately(lastCanvasScale, canvas.scaleFactor);
             bool menu = game.State == ScreenState.Menu || (game.State == ScreenState.Settings && game.SettingsReturn == ScreenState.Menu);
             mainMenu.SetActive(menu); hud.SetActive(!menu);
             pausePanel.SetActive(game.State == ScreenState.Paused);
@@ -99,6 +106,7 @@ namespace SuspiciousSauna
             if (changed)
             {
                 Layout(); previousState = game.State; lastScale = game.UiScale; lastWidth = Screen.width; lastHeight = Screen.height;
+                lastCanvasScale = canvas.scaleFactor;
                 musicSlider.SetValueWithoutNotify(game.Sound.Music); effectsSlider.SetValueWithoutNotify(game.Sound.Effects);
                 uiScaleDropdown.SetValueWithoutNotify(game.UiScale - 1);
             }
@@ -128,16 +136,26 @@ namespace SuspiciousSauna
         float Width => Screen.width / canvas.scaleFactor;
         float Height => Screen.height / canvas.scaleFactor;
         Rect Play => SaunaMap.PlayRect(Width, Height);
+        bool HasSideRails => Play.x >= 220;
         void Layout()
         {
             Rect p = Play; float w = Width, h = Height, u = game != null ? game.UiScale : 1;
             Box(playFrame, p.x - 2, p.y - 2, p.width + 4, p.height + 4);
             Box(overlay, 0, 0, w, h);
-            bool side = p.x >= 125;
-            Box(leftRail, side ? 12 : 6, side ? p.y : 4, side ? p.x - 32 : w - 12, side ? h - p.y - 35 : Mathf.Max(42, p.y - 43));
+            bool side = HasSideRails;
+            // In square and portrait windows the upper margin is a horizontal order strip.
+            // Put the rating beside the footer so the receipt timer has the whole strip height.
+            float stripHeight = Mathf.Min(70, p.y - 2);
+            Box(leftRail, side ? 12 : 8, side ? p.y : p.y - stripHeight - 1, side ? p.x - 32 : w - 16, side ? h - p.y - 35 : stripHeight);
+            Box(receiptHeading.rectTransform, 0, side ? 0 : (stripHeight - 26) * .5f, side ? leftRail.rect.width : 116, 26);
+            var list = (RectTransform)receiptsScroll.transform;
+            list.offsetMin = new Vector2(side ? 0 : 120, 0);
+            list.offsetMax = new Vector2(0, side ? -35 : 0);
+            Box(emptyOrders.rectTransform, 5, side ? 20 : (stripHeight - 26) * .5f, 240, 26);
             Box(rightRail, p.xMax + 20, p.y + 15, Mathf.Max(1, p.x - 35), p.height - 30); rightRail.gameObject.SetActive(side);
-            Box(starRow, p.center.x - 112, side ? 0 : Mathf.Max(0, p.y - 40), 224, 38);
-            Box(footer, p.x + 4, p.yMax + 4, p.width - 8, h - p.yMax - 8);
+            Box(starRow, side ? p.center.x - 112 : 8, side ? 0 : p.yMax + 1, 224, 38);
+            float footerLeft = side ? p.x + 4 : 248;
+            Box(footer, footerLeft, p.yMax + 2, (side ? p.xMax - 4 : w - 8) - footerLeft, Mathf.Min(54, h - p.yMax - 4));
             float statusScale = Mathf.Min(u, Mathf.Max(.6f, (p.x - 45) / 230));
             statusScroll.content.localScale = Vector3.one * statusScale; statusScroll.content.sizeDelta = new Vector2(Mathf.Max(230, (p.x - 45) / statusScale), 530); statusScroll.horizontal = false;
             float fit = Mathf.Min(1, h / 760f);
@@ -182,7 +200,7 @@ namespace SuspiciousSauna
         void UpdateReceipts()
         {
             float u = game.UiScale;
-            bool side = Play.x >= 125;
+            bool side = HasSideRails;
             float viewWidth = receiptsScroll.viewport.rect.width, viewHeight = receiptsScroll.viewport.rect.height;
             bool compact = !side;
             // A fixed square viewport leaves a finite rail. Cap the requested HUD scale so
@@ -190,8 +208,8 @@ namespace SuspiciousSauna
             float factor = compact ? 1 : Mathf.Min(u, Mathf.Max(.6f, (viewWidth - 12) / 250));
             // Shrink the authored paper bounds, not the text scale. Half-height spacing
             // stays constant even when orders extend beyond the bottom of the viewport.
-            float cw = side ? Mathf.Min(viewWidth - 12, receiptPrefab.rect.rect.width * factor) : 380 * u;
-            float ch = compact ? Mathf.Max(28, viewHeight - 8) : receiptPrefab.rect.rect.height * factor;
+            float cw = side ? Mathf.Min(viewWidth - 12, receiptPrefab.rect.rect.width * factor) : Mathf.Min(380 * u, viewWidth - 8);
+            float ch = compact ? viewHeight : receiptPrefab.rect.rect.height * factor;
             float step = ch * .5f;
             receiptsScroll.content.sizeDelta = new Vector2(side ? cw : Mathf.Max(viewWidth, Receipts.Count * (cw + 12)), side ? Mathf.Max(viewHeight, ch + Mathf.Max(0, Receipts.Count - 1) * step) : viewHeight);
             for (int i = Receipts.Count - 1; i >= 0; i--)
@@ -246,23 +264,46 @@ namespace SuspiciousSauna
         {
             string hint = "";
             if (game.State != ScreenState.Playing) { interactionHint.gameObject.SetActive(false); return; }
-            if (game.TargetRetailShelf) hint = "F  잡화 담기";
+            var table = game.TargetTable;
+            bool cleaning = table != null && table.dirty && game.HasCleaningTool;
+            if (cleaning)
+                hint = table.cleaningMode switch
+                {
+                    0 => $"F  {game.tuning.cleaningHoldSeconds:0.##}초 동안 누르기",
+                    1 => $"F  연타  {table.presses} / {game.tuning.cleaningPresses}",
+                    _ => "F  청소 시작"
+                };
+            else if (game.TargetRetailShelf) hint = "F  잡화 담기";
             else if (game.TargetWasteBin) hint = game.WasteConfirmed ? "F  한 번 더 눌러 전부 버리기" : "F  음식물 버리기";
-            else if (game.TargetOrderTable != null) hint = game.TargetOrderTable.service == TableServiceState.Waiting ? "F  테이블 주문 받기" : game.TargetOrderTable.IsFoodOrder ? "F  주문한 음식 전달" : "F  " + game.TargetOrderTable.quest.id + " 응대 완료";
+            else if (game.TargetOrderTable != null) hint = game.TargetOrderTable.service == TableServiceState.Waiting ? "F  테이블 주문 받기" : game.TargetOrderTable.IsTableRetailOrder ? "F  가방 속 잡화 전달" : game.TargetOrderTable.RequiresItems ? "F  주문한 음식 전달" : "F  " + game.TargetOrderTable.quest.id + " 응대 완료";
             else if (game.TargetStation >= 0) hint = game.TargetStation == 1 ? (game.retailLayout.AtStaffSide(game.PlayerPosition) ? (game.ActiveRetailOrder != null ? "F  잡화 전부 전달" : "F  잡화 주문 받기") : "카운터 뒤에서 응대") : "F  " + (game.TargetStation == 3 && game.HasCleaningTool ? "청소 도구 내려놓기" : SaunaMap.StationNames[game.TargetStation]);
-            else if (game.TargetTable != null)
-            {
-                var t = game.TargetTable;
-                hint = !game.HasCleaningTool ? "청소 도구가 필요해요" : t.cleaningMode == 0 ? "F  3초 동안 누르기" : t.cleaningMode == 1 ? "F  연타  " + t.presses + " / " + game.tuning.cleaningPresses : "F  청소 시작";
-            }
+            else if (table != null && table.dirty) hint = "청소 도구가 필요해요";
             interactionHint.gameObject.SetActive(hint.Length > 0);
             if (hint.Length == 0) return;
-            var p = Play; var pos = Point(game.PlayerPosition + Vector2.down * .65f);
-            float width = Mathf.Min(240 * game.UiScale, p.width - 16), height = Mathf.Min(36 * game.UiScale, 64);
-            Box(interactionHint, Mathf.Clamp(pos.x - width * .5f, p.x + 8, p.xMax - width - 8), Mathf.Clamp(pos.y + 10, p.y + 8, p.yMax - height - 8), width, height);
             interactionText.text = hint;
-            var table = game.TargetTable;
-            cleaningProgress.fillAmount = table == null || table.cleaningMode < 0 ? 0 : table.cleaningMode == 0 ? table.held / game.tuning.cleaningHoldSeconds : table.presses / (float)game.tuning.cleaningPresses;
+            bool showGauge = cleaning && table.cleaningMode >= 0;
+            // Keep table prompts above the tabletop and its number (651), below guest speech (700).
+            int hintOrder = game.TargetOrderTable != null || table != null ? 660 : normalHintOrder;
+            if (hintCanvas.sortingOrder != hintOrder) hintCanvas.sortingOrder = hintOrder;
+            cleaningTrack.gameObject.SetActive(showGauge);
+            if (showGauge)
+            {
+                float fraction = table.cleaningMode == 0 ? table.held / game.tuning.cleaningHoldSeconds : table.presses / (float)game.tuning.cleaningPresses;
+                cleaningProgress.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(fraction), 1);
+            }
+            var p = Play;
+            Vector2 pos = Point(game.PlayerPosition + Vector2.down * .65f);
+            float scale = Mathf.Min(game.UiScale, 1.6f);
+            float width = Mathf.Min((interactionText.preferredWidth + 28) * scale, p.width - 16);
+            float height = 38 * scale;
+            float x = Mathf.Clamp(pos.x, p.xMin + 8 + width * .5f, p.xMax - 8 - width * .5f);
+            float gaugeSpace = showGauge ? (cleaningTrack.rect.height - cleaningTrack.anchoredPosition.y) * scale : 0;
+            float y = Mathf.Clamp(pos.y + 10 + height * .5f, p.yMin + 8 + height * .5f, p.yMax - 8 - height * .5f - gaugeSpace);
+            // This canvas is a child of the orthographic play camera, below the guest bubbles.
+            float unitsPerPoint = 2 * game.WorldCamera.orthographicSize / p.height;
+            interactionHint.localPosition = new Vector3((x - p.center.x) * unitsPerPoint, (p.center.y - y) * unitsPerPoint, 10);
+            interactionHint.localScale = Vector3.one * (scale * unitsPerPoint);
+            interactionHint.sizeDelta = new Vector2(width / scale, height / scale);
         }
         [ContextMenu("편집 미리보기/플레이 화면")]
         public void PreviewPlay() { mainMenu.SetActive(false); hud.SetActive(true); pausePanel.SetActive(false); settingsPanel.SetActive(false); gameOverPanel.SetActive(false); if (cooking != null) cooking.gameObject.SetActive(false); if (narration != null) narration.alpha = 0; }

@@ -13,6 +13,7 @@ namespace SuspiciousSauna
         {
             if (State != ScreenState.Playing || TargetStation != 0) return;
             if (ActiveRetailOrder != null) { RejectPickup("카운터에 기다리는 손님이 있어요!"); return; }
+            if (CarryingTableGoods) { RejectPickup("가방의 잡화를 테이블에 전달하거나 진열대에 반납해 주세요."); return; }
             if (HasCleaningTool) { RejectPickup("청소 도구를 먼저 제자리에 두어 주세요."); return; }
             if (Model.inventory.Full) { RejectPickup("양 손이 꽉 찼어요!"); return; }
             SetState(ScreenState.Cooking); Sound.Play();
@@ -26,13 +27,27 @@ namespace SuspiciousSauna
             if (Model.inventory.Full) CloseCooking();
             return true;
         }
-        void DeliverFood(SaunaTable table)
+        void DeliverTableItems(SaunaTable table)
         {
-            int count = table.foodOrder.Deliver(Model.inventory);
-            if (count == 0) { Say("이 테이블에 필요한 음식을 들고 있지 않아요."); return; }
+            var order = table.itemOrder;
+            if (table.IsTableRetailOrder && ActiveRetailOrder != null) { Say("포스기에서 받은 잡화 주문을 먼저 전달해 주세요."); return; }
+            var batch = table.IsTableRetailOrder ? order.DeliverRetail(Model.retailBag)
+                : new RetailDelivery { matched = order.Deliver(Model.inventory) };
+            if (batch.matched == 0 && batch.Incorrect == 0)
+            { Say("이 테이블에 필요한 " + (table.IsTableRetailOrder ? "잡화를" : "음식을") + " 들고 있지 않아요."); return; }
             WorldView.Sync();
-            if (table.foodOrder.Complete) Resolve(table, true);
-            else { Sound.Play(1); Say(count + "개 전달했어요. 남은 음식 " + table.foodOrder.Remaining + "개"); }
+            bool additionalRequest = order.RevealNextRequest();
+            string progress = additionalRequest ? "잠깐! 추가 주문도 가져다주세요." : "남은 " + table.ItemLabel + " " + order.Remaining + "개";
+            if (batch.Incorrect > 0)
+            {
+                float penalty = RetailMistakePenalty(batch.Incorrect);
+                ApplyRetailRating(-penalty);
+                if (order.Complete) { Resolve(table, true); progress = "주문 완료"; }
+                else if (additionalRequest) progress = "추가 잡화 주문";
+                Sound.Play(2); Say($"잘못 {batch.wrong}개 · 초과 {batch.excess}개 · 별점 −{penalty:0.###}점 · {progress}");
+            }
+            else if (order.Complete) Resolve(table, true);
+            else { Sound.Play(1); Say(additionalRequest ? progress : batch.matched + "개 전달했어요. " + progress); }
         }
         void InteractWasteBin()
         {

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace SuspiciousSauna
 {
-    public enum QuestKind { BySection, FoodOrder, Placeholder }
+    public enum QuestKind { BySection, FoodOrder, Placeholder, TableRetailOrder }
     [Serializable]
     public class QuestEntry
     {
@@ -35,8 +35,9 @@ namespace SuspiciousSauna
 
         static QuestEntry Make(string id, bool unusual) => new QuestEntry
         {
-            id = id, title = unusual ? "수상한 부탁" : "손님의 부탁",
-            description = "여기에 퀘스트 내용을 입력하세요.\n지금은 F를 다시 누르면 완료됩니다.",
+            id = id, title = id == "a" ? "테이블 잡화 주문" : unusual ? "수상한 부탁" : "손님의 부탁",
+            kind = id == "a" ? QuestKind.TableRetailOrder : QuestKind.BySection,
+            description = id == "a" ? "진열대에서 주문한 잡화를 가져와 이 테이블에 전달하세요." : "여기에 퀘스트 내용을 입력하세요.\n지금은 F를 다시 누르면 완료됩니다.",
             deliverySeconds = 100
         };
 

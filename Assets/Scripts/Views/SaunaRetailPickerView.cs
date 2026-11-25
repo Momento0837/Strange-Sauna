@@ -32,10 +32,14 @@ namespace SuspiciousSauna
         void RefreshBag()
         {
             if (game == null) return;
-            capacity.text = "담은 잡화 " + game.Model.retailBag.Count + " / 5  ·  아래 물건을 누르면 내려놓아요";
+            var inventory = game.Model.retailBag;
+            bool canPick = game.HasShelfOrder;
+            string destination = game.ActiveRetailOrder != null ? "포스기 잡화" : "테이블 잡화";
+            capacity.text = destination + " " + inventory.Count + " / " + inventory.Capacity + "  ·  아래 잡화를 누르면 반납해요";
+            foreach (var choice in choices) choice.button.interactable = canPick;
             for (int i = 0; i < bagButtons.Length; i++)
             {
-                var item = game.Model.retailBag[i]; bagIcons[i].gameObject.SetActive(item != null);
+                var item = inventory[i]; bagIcons[i].gameObject.SetActive(item != null);
                 bagNumbers[i].text = item != null ? "−" : (i + 1).ToString();
                 if (item != null) bagIcons[i].sprite = item.icon;
                 bagButtons[i].interactable = item != null;

@@ -31,11 +31,11 @@ namespace SuspiciousSauna
         {
             if (retailStatus == null) return;
             retailStatus.text = "포스기  " + game.Model.retailQueue.Count + " / " + game.tuning.retailQueueCapacity + (game.ActiveRetailOrder != null ? "  ·  준비 중" : "");
-            bool showBag = game.ActiveRetailOrder != null;
+            bool showBag = game.ActiveRetailOrder != null || game.Model.retailBag.Count > 0;
             retailBagRow.gameObject.SetActive(showBag);
             if (showBag)
             {
-                heldItemsText.text = "담은 잡화  " + game.Model.retailBag.Count + " / 5";
+                heldItemsText.text = (game.ActiveRetailOrder != null ? "포스기 잡화  " : "테이블 잡화  ") + game.Model.retailBag.Count + " / " + game.Model.retailBag.Capacity;
                 for (int i = 0; i < retailBagItems.Length; i++) retailBagItems[i].Present(game.Model.retailBag[i], 1);
             }
         }

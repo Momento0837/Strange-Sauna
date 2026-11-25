@@ -23,11 +23,13 @@ namespace SuspiciousSauna
         Vector2 lastPosition; bool faceLeft;
         public Camera Camera => playCamera;
         public int SpawnedGuestCount => guests.Count;
+        internal static int DepthOrder(float groundY) => 500 - Mathf.RoundToInt(groundY * 10);
         public void Initialize(SaunaSessionModel session, SaunaMapData sceneMap)
         {
             model = session; map = sceneMap; lastPosition = session.playerPosition;
             if (playCamera == null || player == null || guestContainer == null || guestPrefabs == null || guestPrefabs.Length == 0)
                 throw new System.InvalidOperationException("World View의 씬 오브젝트와 손님 프리팹을 연결하세요.");
+            foreach (var table in layout.tables) table.ApplyDepthOrder();
             Sync();
         }
         void LateUpdate() { UpdateViewport(); if (Application.isPlaying && model != null) Sync(); }

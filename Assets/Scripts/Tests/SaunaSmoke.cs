@@ -62,13 +62,27 @@ namespace SuspiciousSauna
             Check(game.WorldView.SpawnedGuestCount == 3, "guests instantiate assigned character prefabs only");
             game.DebugPosition(game.Map.playerStart);
             yield return Capture("02-gameplay.png");
-            var g = game.Guests[0];
             var order = game.Tables[5];
-            game.DebugPosition(g.position + new Vector2(g.seat < 2 ? -.55f : .55f, 0));
-            game.RefreshTarget(); Check(game.TargetOrderTable == order, "nearest occupied table is interaction target");
+            var tableView = game.WorldView.layout.tables.Single(t => t.index == order.index);
+            var tableCenter = game.Map.tables[order.index];
+            var footprint = tableView.GetComponent<SaunaObstacle>().WorldRect();
+            game.DebugPosition(tableCenter + Vector2.up * 2.2f);
+            game.MovePlayer(Vector2.down, .4f);
+            game.RefreshTarget();
+            yield return Capture("21-order-from-behind.png");
+            Check(game.TargetOrderTable == order && game.PlayerPosition.y > footprint.yMax && game.WorldView.player.sorting.sortingOrder < tableView.tableSprite.sortingOrder,
+                "walking down to take an order stops behind the tabletop");
+            Check(game.Interface.interactionText.canvas.sortingOrder > tableView.tableSprite.sortingOrder, "table order hint stays readable from behind");
             game.HandleInteraction(true, true, .016f);
             Check(order.service == TableServiceState.Ordered && game.Interface.Receipts.Count == 1, "F creates one order and one receipt for the party");
-            Check(order.foodOrder.Quantity == 3 && order.partySize == 3, "three guests request three items on one order");
+            Check(order.itemOrder.Quantity == 3 && order.partySize == 3, "three guests request three items on one order");
+            game.DebugPosition(tableCenter + Vector2.down * 2.2f);
+            game.MovePlayer(Vector2.up, .4f);
+            game.RefreshTarget();
+            yield return Capture("22-order-from-front.png");
+            var dirtOrder = tableView.dirt.GetComponent<SpriteRenderer>().sortingOrder;
+            Check(game.TargetOrderTable == order && game.PlayerPosition.y < footprint.yMin && game.WorldView.player.sorting.sortingOrder > dirtOrder && dirtOrder > tableView.tableSprite.sortingOrder,
+                "walking up to serve draws the player in front of the table and its dirt");
             game.HandleInteraction(true, true, .016f);
             Check(order.service == TableServiceState.Ordered && game.Completed == 0, "empty-hand second F cannot complete food order");
             yield return new WaitForSecondsRealtime(.6f);
@@ -81,8 +95,8 @@ namespace SuspiciousSauna
             Check(game.UiScale == previousScale && game.InSession, "in-game UI scale locked");
             yield return Capture("04-paused-settings.png");
             game.CloseSettings(); game.Resume(); game.DebugRating(4);
-            var wanted = order.foodOrder.lines[0].item;
-            var wrong = game.items.cookingMenu.First(item => !order.foodOrder.lines.Any(l => l.item == item));
+            var wanted = order.itemOrder.lines[0].item;
+            var wrong = game.items.cookingMenu.First(item => !order.itemOrder.lines.Any(l => l.item == item));
             AtCooking(); game.HandleInteraction(true, true, .016f);
             Check(game.State == ScreenState.Cooking && game.Interface.cooking.foods.Length == 9, "F at counter opens all nine food choices");
             float beforeCooking = order.patience; game.DebugTickGuests(.5f);
@@ -96,7 +110,7 @@ namespace SuspiciousSauna
             yield return new WaitForSecondsRealtime(.2f);
             yield return Capture("10-full-hands.png");
             game.DebugPosition(game.Map.tables[5] + Vector2.down * 2); game.HandleInteraction(true, true, .016f);
-            Check(game.Model.inventory.Right == null && game.Model.inventory.Left == wrong && order.foodOrder.Remaining == 2 && game.Completed == 0, "partial delivery frees matching hand and preserves wrong food");
+            Check(game.Model.inventory.Right == null && game.Model.inventory.Left == wrong && order.itemOrder.Remaining == 2 && game.Completed == 0, "partial delivery frees matching hand and preserves wrong food");
             AtCooking(); game.HandleInteraction(true, true, .016f); Pick(wanted);
             Check(game.Model.inventory.Right == wanted && game.Model.inventory.Left == wrong, "refilling right hand preserves left item");
             game.DebugPosition(game.Map.stations[3] + Vector2.down * 1.5f); game.HandleInteraction(true, true, .016f);
@@ -126,13 +140,30 @@ namespace SuspiciousSauna
             game.DebugPosition(SaunaMap.Stations[3] + Vector2.down * 1.5f); game.HandleInteraction(true, true, .016f);
             Check(game.HasCleaningTool, "F picks up cleaning tool at counter");
             game.DebugPosition(game.Map.tables[5] + Vector2.down * 1.7f);
+            // Drive the held key explicitly while capturing. Live keyboard polling would release it.
+            game.enabled = false;
             game.Tables[5].cleaningMode = 0; game.HandleInteraction(false, true, 1.5f);
+            yield return Capture("20-cleaning-hold-half.png");
+            var track = game.Interface.cleaningTrack;
+            var fill = game.Interface.cleaningProgress.rectTransform;
+            var hint = game.Interface.interactionHint;
+            float trackTop = hint.InverseTransformPoint(track.TransformPoint(new Vector2(0, track.rect.yMax))).y;
+            Check(track.gameObject.activeInHierarchy && trackTop < hint.rect.yMin && fill.rect.height > 0
+                && Mathf.Abs(fill.rect.width - track.rect.width * .5f) < .01f, "half-held cleaning key draws a half-width bar below the hint");
+            int gaugeOrder = fill.GetComponentInParent<Canvas>().sortingOrder;
+            Check(game.WorldView.layout.tables.All(t => t.numberBadge.sortingOrder < gaugeOrder && t.numberLabel.canvas.sortingOrder < gaugeOrder),
+                "table number badges cannot cover the cleaning gauge");
             game.HandleInteraction(false, false, .1f);
+            yield return new WaitForEndOfFrame();
+            Check(track.gameObject.activeInHierarchy && Mathf.Approximately(fill.rect.width, 0), "releasing F empties the visible hold gauge");
             Check(game.Tables[5].held == 0 && game.Tables[5].dirty, "release resets continuous hold");
             game.HandleInteraction(false, true, 2.9f);
             Check(game.Tables[5].dirty, "hold must last full three seconds");
             game.HandleInteraction(false, true, .11f);
             Check(!game.Tables[5].dirty, "three-second hold cleans table");
+            yield return new WaitForEndOfFrame();
+            Check(!track.gameObject.activeInHierarchy, "completed cleaning dismisses the gauge");
+            game.enabled = true;
             game.Tables[5].dirty = true; game.Tables[5].cleaningMode = 1;
             for (int n = 0; n < 9; n++) game.HandleInteraction(true, true, .01f);
             Check(game.Tables[5].dirty && game.Tables[5].presses == 9, "nine presses do not finish mash");
@@ -153,7 +184,7 @@ namespace SuspiciousSauna
                 game.StartGame(); game.SpawnParty(0, partySize); game.DebugTickGuests(60); game.DebugRating(4);
                 var table = game.Tables[0]; game.Accept(table); game.Accept(table);
                 Check(game.Interface.Receipts.Count == 1 && game.Guests.Count == partySize, partySize + " guests share exactly one order");
-                Check(table.foodOrder.Quantity == partySize, partySize + " guests order exactly one item each");
+                Check(table.itemOrder.Quantity == partySize, partySize + " guests order exactly one item each");
                 ServeAll(table); game.Resolve(table, true);
                 Check(game.Completed == 1 && Mathf.Abs(game.Rating - 4.15f) < .001f && game.Guests.All(c => c.state == GuestState.Leaving), partySize + " guests resolve once and all leave");
                 game.StartGame(); game.SpawnParty(0, partySize); game.DebugTickGuests(60);
@@ -181,8 +212,8 @@ namespace SuspiciousSauna
             yield return Capture("14-cooking-300.png"); game.CloseCooking();
             game.MainMenu(); game.StartGame(); game.SpawnParty(0,1); game.SpawnParty(1,1); game.DebugTickGuests(60);
             var source = game.Tables[0]; var destination = game.Tables[1]; game.Accept(source); game.Accept(destination);
-            destination.foodOrder = new TableFoodOrder(); destination.foodOrder.Add(source.foodOrder.lines[0].item);
-            AtCooking(); game.HandleInteraction(true,true,.016f); Pick(source.foodOrder.lines[0].item); game.CloseCooking();
+            destination.itemOrder = new TableItemOrder(); destination.itemOrder.Add(source.itemOrder.lines[0].item);
+            AtCooking(); game.HandleInteraction(true,true,.016f); Pick(source.itemOrder.lines[0].item); game.CloseCooking();
             game.DebugPosition(game.Map.tables[1] + Vector2.down * 2); game.HandleInteraction(true,true,.016f);
             Check(destination.service == TableServiceState.Departing && source.service == TableServiceState.Ordered && game.Model.inventory.Count == 0, "matching food can be delivered to another table requesting it");
             game.MainMenu(); game.SetUiScale(1); game.StartGame();
@@ -209,6 +240,9 @@ namespace SuspiciousSauna
             game.DebugPosition(game.Map.tables[5] + Vector2.down * 2.1f); game.Accept(game.Tables[5]);
             yield return new WaitForSecondsRealtime(.6f);
             Check(Mathf.Abs(game.WorldCamera.pixelWidth - game.WorldCamera.pixelHeight) <= 1, "portrait window retains square viewport");
+            var strip = game.Interface.receiptsScroll;
+            Check(strip.horizontal && !strip.vertical && strip.viewport.rect.height >= 35 && game.Interface.Receipts[0].view.compact.activeInHierarchy,
+                "portrait order strip fits the compact countdown and scrolls horizontally");
             yield return Capture("09-portrait.png");
             game.MainMenu(); game.SetUiScale(previousScale); Screen.SetResolution(1440, 900, FullScreenMode.Windowed);
             File.WriteAllLines(Path.Combine(output, "runtime-checks.txt"), checks);
@@ -227,10 +261,10 @@ namespace SuspiciousSauna
         void ServeAll(SaunaTable table)
         {
             int guard = 0;
-            while (table.service == TableServiceState.Ordered && table.foodOrder.Remaining > 0 && guard++ < 5)
+            while (table.service == TableServiceState.Ordered && table.itemOrder.Remaining > 0 && guard++ < 5)
             {
                 AtCooking(); game.HandleInteraction(true, true, .016f);
-                var remaining = table.foodOrder.lines.SelectMany(l => Enumerable.Repeat(l.item, l.Remaining)).Take(2).ToArray();
+                var remaining = table.itemOrder.lines.SelectMany(l => Enumerable.Repeat(l.item, l.Remaining)).Take(2).ToArray();
                 foreach (var item in remaining) Pick(item);
                 game.CloseCooking(); game.DebugPosition(game.Map.tables[table.index] + Vector2.down * 2);
                 game.HandleInteraction(true, true, .016f);

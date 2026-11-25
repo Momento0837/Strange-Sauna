@@ -11,6 +11,8 @@ namespace SuspiciousSauna
         public event Action<RetailOrder> RetailResolved;
         public RetailCustomer RetailFront => Model.retailQueue.FirstOrDefault();
         public RetailOrder ActiveRetailOrder => RetailFront != null && RetailFront.state == RetailCustomerState.Ordered ? RetailFront.order : null;
+        public bool HasShelfOrder => ActiveRetailOrder != null || Tables.Exists(t => t.service == TableServiceState.Ordered && t.IsTableRetailOrder);
+        bool CarryingTableGoods => ActiveRetailOrder == null && Model.retailBag.Count > 0;
         public bool TargetRetailShelf { get; private set; }
         float retailSpawnTimer;
         public float RetailDeliverySeconds
@@ -107,6 +109,7 @@ namespace SuspiciousSauna
         {
             if (State != ScreenState.Playing) return;
             if (Model.inventory.Count > 0) { RejectPickup("음식을 서빙 중입니다!"); return; }
+            if (CarryingTableGoods) { RejectPickup("가방의 잡화를 테이블에 전달하거나 진열대에 반납해 주세요."); return; }
             if (HasCleaningTool) { RejectPickup("청소 중입니다!"); return; }
             if (retailLayout == null || !retailLayout.AtStaffSide(PlayerPosition)) { Say("카운터 뒤에서 손님을 응대해 주세요."); return; }
             var customer = RetailFront;
@@ -116,13 +119,13 @@ namespace SuspiciousSauna
             {
                 var result = customer.order.Evaluate(Model.retailBag);
                 string message = result.Success ? "잡화 응대 완료!" : $"잡화 전달 · 잘못 {result.wrong} / 초과 {result.excess} / 부족 {result.missing}";
-                FinishRetail(customer, result.Success, result.Errors * 5 * tuning.failurePercent * tuning.retailItemPenaltyMultiplier, message);
+                FinishRetail(customer, result.Success, RetailMistakePenalty(result.Errors), message);
                 return;
             }
             if (customer.state != RetailCustomerState.Waiting) return;
             var order = new RetailOrder { patience = RetailDeliverySeconds, totalPatience = RetailDeliverySeconds };
             int count = UnityEngine.Random.Range(1, 6);
-            for (int i = 0; i < count; i++) order.requested.Add(items.retailMenu[UnityEngine.Random.Range(0, items.retailMenu.Length)]);
+            for (int i = 0; i < count; i++) order.requested.Add(items.RandomRetail());
             order.SampleReceipt(); customer.order = order; customer.state = RetailCustomerState.Ordered;
             RetailAccepted?.Invoke(order); Sound.Play(); Say("잡화 주문을 받았어요. 진열대에서 물건을 담아 주세요.");
         }
@@ -133,8 +136,8 @@ namespace SuspiciousSauna
             {
                 customer.order.resolved = true; customer.order.success = success;
                 RetailResolved?.Invoke(customer.order); Model.retailBag.Clear();
+                if (State == ScreenState.RetailPicking) CloseRetailPicking();
             }
-            if (State == ScreenState.RetailPicking) CloseRetailPicking();
             Model.retailQueue.Remove(customer); DepartRetail(customer, success); AdvanceRetailQueue();
             if (success) Completed++; else Failed++;
             Sound.Play(success ? 1 : 2); Say(message);
@@ -154,6 +157,7 @@ namespace SuspiciousSauna
             }
             else customer.path = Navigation.Path(customer.position, Map.entrance, customer.id + 197);
         }
+        float RetailMistakePenalty(int units) => units * 5 * tuning.failurePercent * tuning.retailItemPenaltyMultiplier;
         void ApplyRetailRating(float change)
         {
             Rating = Mathf.Clamp(Rating + change, 1, 5);
@@ -162,13 +166,15 @@ namespace SuspiciousSauna
         public void OpenRetailPicking()
         {
             if (State != ScreenState.Playing || !TargetRetailShelf) return;
-            if (ActiveRetailOrder == null) { Say("포스기에서 잡화 주문을 먼저 받아 주세요."); return; }
+            if (HasCleaningTool) { RejectPickup("청소 도구를 먼저 제자리에 두어 주세요."); return; }
+            if (Model.inventory.Count > 0) { RejectPickup("음식을 서빙 중입니다!"); return; }
+            if (!HasShelfOrder && !CarryingTableGoods) { Say("테이블이나 포스기에서 잡화 주문을 먼저 받아 주세요."); return; }
             SetState(ScreenState.RetailPicking); Sound.Play();
         }
         public void CloseRetailPicking() { if (State == ScreenState.RetailPicking) SetState(ScreenState.Playing); }
         public bool PickRetailItem(SaunaItemDefinition item)
         {
-            if (State != ScreenState.RetailPicking || ActiveRetailOrder == null || item == null || !items.retailMenu.Contains(item)) return false;
+            if (State != ScreenState.RetailPicking || !HasShelfOrder || item == null || !items.retailMenu.Contains(item)) return false;
             if (!Model.retailBag.TryAdd(item)) { RejectPickup("잡화는 최대 5개까지 들 수 있어요!"); return false; }
             Sound.Play(1); WorldView.Sync(); return true;
         }
